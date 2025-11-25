@@ -1,0 +1,87 @@
+{
+  "description": "Sample flight schedule for runway scheduling demonstration",
+  "destination": "LHR",
+  "date": "2025-11-25",
+  "flights": [
+    {
+      "flight_id": "BA001",
+      "origin": "JFK",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:00:00",
+      "occupancy_time": 15,
+      "priority": 2
+    },
+    {
+      "flight_id": "AF102",
+      "origin": "CDG",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:05:00",
+      "occupancy_time": 12,
+      "priority": 4
+    },
+    {
+      "flight_id": "LH303",
+      "origin": "FRA",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:10:00",
+      "occupancy_time": 15,
+      "priority": 3
+    },
+    {
+      "flight_id": "EK204",
+      "origin": "DXB",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:18:00",
+      "occupancy_time": 18,
+      "priority": 2
+    },
+    {
+      "flight_id": "SQ405",
+      "origin": "SIN",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:25:00",
+      "occupancy_time": 20,
+      "priority": 3
+    },
+    {
+      "flight_id": "AA506",
+      "origin": "ORD",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:35:00",
+      "occupancy_time": 15,
+      "priority": 5
+    },
+    {
+      "flight_id": "UA607",
+      "origin": "SFO",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:40:00",
+      "occupancy_time": 16,
+      "priority": 4
+    },
+    {
+      "flight_id": "IB708",
+      "origin": "MAD",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:50:00",
+      "occupancy_time": 12,
+      "priority": 5
+    },
+    {
+      "flight_id": "AZ809",
+      "origin": "FCO",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T14:55:00",
+      "occupancy_time": 14,
+      "priority": 4
+    },
+    {
+      "flight_id": "TK910",
+      "origin": "IST",
+      "destination": "LHR",
+      "arrival_start": "2025-11-25T15:00:00",
+      "occupancy_time": 18,
+      "priority": 3
+    }
+  ]
+}

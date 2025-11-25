@@ -1,0 +1,13 @@
+# FlightOptima Dependencies
+# Core requirements for Route Planner & Runway Scheduler
+
+# No external dependencies required for core functionality
+# The project uses only Python standard library
+
+# Optional: For enhanced features
+# pytest>=7.0.0           # For running tests
+# pytest-cov>=4.0.0       # For test coverage reports
+
+# Optional: For visualization (not required for core functionality)
+# networkx>=3.0           # Graph visualization
+# matplotlib>=3.7.0       # Plotting
