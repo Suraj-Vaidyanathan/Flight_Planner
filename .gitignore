@@ -86,3 +86,37 @@ Desktop.ini
 # Project specific
 *.log
 schedule_output.json
+
+# ===================
+# Node.js / React
+# ===================
+
+# Dependencies
+frontend/node_modules/
+node_modules/
+
+# Build output
+frontend/build/
+frontend/dist/
+
+# Environment
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Runtime
+frontend/.pnp
+frontend/.pnp.js
+
+# Testing
+frontend/coverage/
+
+# Misc
+frontend/.eslintcache
