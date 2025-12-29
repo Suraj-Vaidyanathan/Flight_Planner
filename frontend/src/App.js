@@ -4,10 +4,11 @@ import L from 'leaflet';
 import { 
   Plane, MapPin, Route, Calendar, 
   Play, RefreshCw, ChevronRight, AlertCircle,
-  Layers, Timer
+  Layers, Timer, Users
 } from 'lucide-react';
 import api from './api';
 import RunwayScheduleChart from './components/RunwayScheduleChart';
+import PilotScheduleViewer from './components/PilotScheduleViewer';
 
 // Fix Leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -121,6 +122,13 @@ function App() {
   const [scheduleDest, setScheduleDest] = useState('LHR');
   const [generatedFlights, setGeneratedFlights] = useState(null); // Store generated flights
   
+  // Pilot scheduler state
+  const [numPilots, setNumPilots] = useState(5);
+  const [pilotStrategy, setPilotStrategy] = useState('least_busy');
+  const [minRestHours, setMinRestHours] = useState(10.0);
+  const [maxDailyHours, setMaxDailyHours] = useState(8.0);
+  const [pilotScheduleResult, setPilotScheduleResult] = useState(null);
+  
   // Load airports on mount
   useEffect(() => {
     loadAirports();
@@ -202,6 +210,34 @@ function App() {
     }
   };
   
+  const runPilotScheduler = async () => {
+    if (!scheduleResult || !scheduleResult.flights || scheduleResult.flights.length === 0) {
+      setError('Please run runway scheduler first');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const result = await api.schedulePilots(
+        scheduleResult.flights,
+        numPilots,
+        {
+          minRestHours,
+          maxDailyHours,
+          strategy: pilotStrategy,
+          baseAirport: scheduleDest
+        }
+      );
+      setPilotScheduleResult(result);
+    } catch (err) {
+      setError(err.message || 'Failed to run pilot scheduler');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   const runFullDemo = async () => {
     if (!source || !destination) {
       setError('Please select source and destination');
@@ -271,6 +307,13 @@ function App() {
           >
             <Calendar size={18} />
             Runway Scheduler
+          </button>
+          <button 
+            className={`nav-btn ${view === 'pilots' ? 'active' : ''}`}
+            onClick={() => setView('pilots')}
+          >
+            <Users size={18} />
+            Pilot Scheduler
           </button>
         </nav>
       </header>
@@ -403,7 +446,7 @@ function App() {
                 </div>
               )}
             </>
-          ) : (
+          ) : view === 'schedule' ? (
             <>
               {/* Scheduler Panel */}
               <div className="panel">
@@ -518,6 +561,136 @@ function App() {
                 </div>
               )}
             </>
+          ) : (
+            <>
+              {/* Pilot Scheduler Panel */}
+              <div className="panel">
+                <h2><Users size={18} /> Pilot Scheduler</h2>
+                
+                <div className="form-group">
+                  <label>Number of Pilots</label>
+                  <input 
+                    type="number" 
+                    value={numPilots}
+                    onChange={(e) => setNumPilots(Number(e.target.value))}
+                    min="1"
+                    max="20"
+                  />
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    Recommended: {Math.ceil(numFlights / 2)} pilots for {numFlights} flights
+                  </small>
+                </div>
+                
+                <div className="form-group">
+                  <label>Scheduling Strategy</label>
+                  <select value={pilotStrategy} onChange={(e) => setPilotStrategy(e.target.value)}>
+                    <option value="least_busy">Least Busy (Fair Distribution)</option>
+                    <option value="most_available">Most Available (Max Utilization)</option>
+                    <option value="round_robin">Round Robin (Equal Assignments)</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label>Min Rest Hours (FAA: 10h)</label>
+                  <input 
+                    type="number" 
+                    value={minRestHours}
+                    onChange={(e) => setMinRestHours(Number(e.target.value))}
+                    min="0"
+                    max="24"
+                    step="0.5"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Max Daily Hours (FAA: 8h)</label>
+                  <input 
+                    type="number" 
+                    value={maxDailyHours}
+                    onChange={(e) => setMaxDailyHours(Number(e.target.value))}
+                    min="1"
+                    max="24"
+                    step="0.5"
+                  />
+                </div>
+                
+                <button 
+                  className="btn btn-primary" 
+                  onClick={runPilotScheduler}
+                  disabled={loading || !scheduleResult}
+                >
+                  {loading ? <RefreshCw size={18} className="spin" /> : <Users size={18} />}
+                  {scheduleResult ? 'Assign Pilots' : 'Run Runway Scheduler First'}
+                </button>
+                
+                {!scheduleResult && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                    💡 Generate and schedule flights in the Runway Scheduler tab first
+                  </p>
+                )}
+              </div>
+              
+              {/* Pilot Schedule Stats */}
+              {pilotScheduleResult && (
+                <div className="panel">
+                  <h2><AlertCircle size={18} /> Pilot Stats</h2>
+                  
+                  <div style={{ 
+                    marginBottom: '1rem', 
+                    padding: '0.5rem 0.75rem', 
+                    background: 'var(--surface)', 
+                    borderRadius: '6px',
+                    fontSize: '0.85rem'
+                  }}>
+                    <strong>Strategy:</strong> {pilotScheduleResult.strategy.replace('_', ' ')}
+                  </div>
+                  
+                  <div className="stats-grid">
+                    <div className="stat-card">
+                      <div className="value" style={{ color: '#10b981' }}>
+                        {pilotScheduleResult.total_pilots_used}
+                      </div>
+                      <div className="label">Active Pilots</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{pilotScheduleResult.assignments.length}</div>
+                      <div className="label">Assigned</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value" style={{ color: pilotScheduleResult.unassigned_flights.length > 0 ? '#f59e0b' : '#10b981' }}>
+                        {pilotScheduleResult.unassigned_flights.length}
+                      </div>
+                      <div className="label">Unassigned</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value" style={{ 
+                        color: pilotScheduleResult.compliance_rate >= 95 ? '#10b981' : 
+                               pilotScheduleResult.compliance_rate >= 80 ? '#f59e0b' : '#ef4444' 
+                      }}>
+                        {pilotScheduleResult.compliance_rate}%
+                      </div>
+                      <div className="label">Compliance</div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginTop: '1rem' }}>
+                    <span style={{ 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 1rem',
+                      background: pilotScheduleResult.is_valid ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                      color: pilotScheduleResult.is_valid ? 'var(--secondary)' : 'var(--danger)',
+                      borderRadius: '8px',
+                      fontSize: '0.875rem',
+                      fontWeight: '500'
+                    }}>
+                      {pilotScheduleResult.is_valid ? '✓ FAA Compliant' : '✗ Has Violations'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           
           {/* Error display */}
@@ -609,13 +782,23 @@ function App() {
               </div>
             )}
           </div>
-        ) : (
+        ) : view === 'schedule' ? (
           <div className="schedule-container">
             {scheduleResult ? (
               <RunwayScheduleChart scheduleResult={scheduleResult} />
             ) : (
               <div className="loading">
                 <p>Generate flights to see runway scheduling visualization</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="schedule-container">
+            {pilotScheduleResult ? (
+              <PilotScheduleViewer pilotScheduleResult={pilotScheduleResult} />
+            ) : (
+              <div className="loading">
+                <p>Run runway scheduler first, then assign pilots to flights</p>
               </div>
             )}
           </div>

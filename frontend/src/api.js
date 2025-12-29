@@ -84,6 +84,19 @@ const api = {
       num_other_flights: numOtherFlights
     });
     return response.data;
+  },
+  
+  // Schedule pilots to flights
+  async schedulePilots(flights, numPilots = 5, options = {}) {
+    const response = await axios.post(`${API_BASE}/pilots/schedule`, {
+      flights,
+      num_pilots: numPilots,
+      min_rest_hours: options.minRestHours || 10.0,
+      max_daily_hours: options.maxDailyHours || 8.0,
+      strategy: options.strategy || 'least_busy',
+      base_airport: options.baseAirport || ''
+    });
+    return response.data;
   }
 };
 
