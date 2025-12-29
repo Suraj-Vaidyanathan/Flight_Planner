@@ -17,9 +17,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models.airport import Airport
 from src.models.flight import Flight
+from src.models.pilot import Pilot, PilotAssignment
 from src.models.graph import RouteGraph, ConflictGraph
 from src.algorithms.routing import RoutePlanner, RouteResult
 from src.algorithms.scheduling import RunwayScheduler, ScheduleResult
+from src.algorithms.pilot_scheduling import PilotScheduler, PilotScheduleResult
 from src.utils.data_loader import DataLoader
 
 
@@ -101,6 +103,46 @@ def schedule_result_to_dict(result: ScheduleResult) -> dict:
         'num_runways': result.num_runways,
         'runway_assignments': runway_assignments,
         'conflicts_resolved': result.conflicts_resolved
+    }
+
+
+def pilot_to_dict(pilot: Pilot) -> dict:
+    """Convert Pilot to JSON-serializable dict."""
+    return {
+        'pilot_id': pilot.pilot_id,
+        'name': pilot.name,
+        'certification': pilot.certification,
+        'max_daily_hours': pilot.max_daily_hours,
+        'min_rest_hours': pilot.min_rest_hours,
+        'assigned_flights': pilot.assigned_flights,
+        'total_hours_today': round(pilot.total_hours_today, 2),
+        'remaining_hours': round(pilot.get_remaining_hours(), 2),
+        'home_base': pilot.home_base,
+        'availability_time': pilot.get_availability_time().isoformat() if pilot.get_availability_time() else None
+    }
+
+
+def pilot_assignment_to_dict(assignment: PilotAssignment) -> dict:
+    """Convert PilotAssignment to JSON-serializable dict."""
+    return {
+        'pilot_id': assignment.pilot_id,
+        'flight_id': assignment.flight_id,
+        'assignment_time': assignment.assignment_time.isoformat(),
+        'flight_start': assignment.flight_start.isoformat(),
+        'flight_end': assignment.flight_end.isoformat(),
+        'duration_hours': round((assignment.flight_end - assignment.flight_start).total_seconds() / 3600, 2)
+    }
+
+
+def pilot_schedule_result_to_dict(result: PilotScheduleResult, pilots: list) -> dict:
+    """Convert PilotScheduleResult to JSON-serializable dict."""
+    return {
+        'assignments': [pilot_assignment_to_dict(a) for a in sorted(result.assignments, key=lambda x: x.flight_start)],
+        'unassigned_flights': [flight_to_dict(f) for f in result.unassigned_flights],
+        'pilot_utilization': result.pilot_utilization,
+        'total_pilots_used': result.total_pilots_used,
+        'compliance_rate': round(result.compliance_rate, 1),
+        'pilots': [pilot_to_dict(p) for p in pilots]
     }
 
 
@@ -497,6 +539,68 @@ def route_with_scheduling():
     
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/pilots/schedule', methods=['POST'])
+def schedule_pilots():
+    """Schedule pilots to flights with ethical constraints."""
+    data = request.get_json()
+    
+    # Get flights from request
+    flight_data = data.get('flights', [])
+    if not flight_data:
+        return jsonify({'error': 'Flights required'}), 400
+    
+    # Get parameters
+    num_pilots = min(data.get('num_pilots', 5), 20)
+    min_rest_hours = data.get('min_rest_hours', 10.0)
+    max_daily_hours = data.get('max_daily_hours', 8.0)
+    strategy = data.get('strategy', 'least_busy')
+    base_airport = data.get('base_airport', '')
+    
+    try:
+        # Convert flight data to Flight objects
+        flights = []
+        for fd in flight_data:
+            flight = Flight(
+                flight_id=fd['flight_id'],
+                origin=fd['origin'],
+                destination=fd['destination'],
+                arrival_start=datetime.fromisoformat(fd['arrival_start']),
+                occupancy_time=fd['occupancy_time'],
+                priority=fd.get('priority', 5)
+            )
+            flights.append(flight)
+        
+        # Create pilot scheduler
+        scheduler = PilotScheduler(min_rest_hours=min_rest_hours, max_daily_hours=max_daily_hours)
+        pilots = scheduler.create_pilots(num_pilots, base_airport=base_airport)
+        
+        # Schedule pilots
+        result = scheduler.schedule(flights, strategy=strategy)
+        
+        # Validate schedule
+        is_valid, violations = scheduler.validate_schedule(result.assignments)
+        
+        # Get statistics
+        stats = scheduler.get_statistics()
+        
+        response = pilot_schedule_result_to_dict(result, pilots)
+        response['is_valid'] = is_valid
+        response['violations'] = violations
+        response['statistics'] = stats
+        response['strategy'] = strategy
+        response['parameters'] = {
+            'num_pilots': num_pilots,
+            'min_rest_hours': min_rest_hours,
+            'max_daily_hours': max_daily_hours,
+            'base_airport': base_airport
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # Error handlers
