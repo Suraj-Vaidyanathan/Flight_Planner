@@ -22,7 +22,10 @@ from src.models.graph import RouteGraph, ConflictGraph
 from src.algorithms.routing import RoutePlanner, RouteResult
 from src.algorithms.scheduling import RunwayScheduler, ScheduleResult
 from src.algorithms.pilot_scheduling import PilotScheduler, PilotScheduleResult
+from src.algorithms.multi_day_pilot_scheduling import MultiDayPilotScheduler, MultiDayScheduleResult
+from src.algorithms.constrained_scheduling import ConstrainedRunwayScheduler, ConstrainedScheduleResult
 from src.utils.data_loader import DataLoader
+from src.utils.multi_day_generator import MultiDayFlightGenerator
 
 
 # Initialize Flask app
@@ -68,7 +71,12 @@ def flight_to_dict(flight: Flight) -> dict:
         'arrival_end': flight.arrival_end.isoformat(),
         'occupancy_time': flight.occupancy_time,
         'runway_id': flight.runway_id,
-        'priority': flight.priority
+        'priority': flight.priority,
+        'passenger_count': getattr(flight, 'passenger_count', 150),
+        'distance': getattr(flight, 'distance', 1000.0),
+        'flight_duration': getattr(flight, 'flight_duration', 2.0),
+        'day': getattr(flight, 'day', 0),
+        'delayed_by': getattr(flight, 'delayed_by', 0)
     }
 
 
@@ -130,7 +138,8 @@ def pilot_assignment_to_dict(assignment: PilotAssignment) -> dict:
         'assignment_time': assignment.assignment_time.isoformat(),
         'flight_start': assignment.flight_start.isoformat(),
         'flight_end': assignment.flight_end.isoformat(),
-        'duration_hours': round((assignment.flight_end - assignment.flight_start).total_seconds() / 3600, 2)
+        'duration_hours': round((assignment.flight_end - assignment.flight_start).total_seconds() / 3600, 2),
+        'day': assignment.day
     }
 
 
@@ -598,6 +607,281 @@ def schedule_pilots():
         }
         
         return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/flights/generate-multi-day', methods=['POST'])
+def generate_multi_day_flights():
+    """Generate flights spanning multiple days."""
+    data = request.get_json()
+    
+    destination = data.get('destination', 'LHR')
+    num_days = min(data.get('num_days', 3), 7)  # Max 7 days
+    flights_per_day = min(data.get('flights_per_day', 15), 30)  # Max 30 per day
+    pattern = data.get('pattern', 'realistic')
+    seed = data.get('seed', None)
+    
+    try:
+        generator = MultiDayFlightGenerator(seed=seed)
+        
+        if pattern in ['realistic', 'peak_hours', 'uniform', 'random']:
+            flights = generator.generate_with_patterns(destination, num_days, pattern, flights_per_day)
+        else:
+            flights = generator.generate_multi_day_flights(
+                destination, num_days, flights_per_day
+            )
+        
+        return jsonify({
+            'flights': [flight_to_dict(f) for f in flights],
+            'total_flights': len(flights),
+            'num_days': num_days,
+            'pattern': pattern,
+            'destination': destination
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pilots/schedule-multi-day', methods=['POST'])
+def schedule_pilots_multi_day():
+    """Schedule pilots across multiple days with proper daily resets."""
+    data = request.get_json()
+    
+    # Get flights from request
+    flight_data = data.get('flights', [])
+    if not flight_data:
+        return jsonify({'error': 'Flights required'}), 400
+    
+    # Get parameters
+    num_pilots = min(data.get('num_pilots', 5), 30)
+    min_rest_hours = data.get('min_rest_hours', 10.0)
+    max_daily_hours = data.get('max_daily_hours', 8.0)
+    strategy = data.get('strategy', 'least_busy')
+    base_airport = data.get('base_airport', '')
+    
+    try:
+        # Convert flight data to Flight objects
+        flights = []
+        for fd in flight_data:
+            flight = Flight(
+                flight_id=fd['flight_id'],
+                origin=fd['origin'],
+                destination=fd['destination'],
+                arrival_start=datetime.fromisoformat(fd['arrival_start']),
+                occupancy_time=fd['occupancy_time'],
+                priority=fd.get('priority', 5),
+                passenger_count=fd.get('passenger_count', 150),
+                distance=fd.get('distance', 1000.0),
+                flight_duration=fd.get('flight_duration', 2.0),
+                day=fd.get('day', 0)
+            )
+            flights.append(flight)
+        
+        # Create multi-day pilot scheduler
+        scheduler = MultiDayPilotScheduler(
+            min_rest_hours=min_rest_hours, 
+            max_daily_hours=max_daily_hours
+        )
+        pilots = scheduler.create_pilots(num_pilots, base_airport=base_airport)
+        
+        # Schedule pilots
+        result = scheduler.schedule(flights, strategy=strategy)
+        
+        # Validate schedule
+        is_valid, violations = scheduler.validate_schedule(result)
+        
+        # Get utilization
+        utilization = scheduler.get_pilot_utilization(result)
+        
+        # Convert to JSON
+        response = {
+            'daily_schedules': {},
+            'all_assignments': [
+                {
+                    'pilot_id': a.pilot_id,
+                    'flight_id': a.flight_id,
+                    'flight_start': a.flight_start.isoformat(),
+                    'flight_end': a.flight_end.isoformat(),
+                    'duration_hours': round((a.flight_end - a.flight_start).total_seconds() / 3600, 2),
+                    'day': a.day
+                }
+                for a in result.all_assignments
+            ],
+            'unassigned_flights': [flight_to_dict(f) for f in result.unassigned_flights],
+            'pilot_daily_hours': {
+                pid: {str(day): hours for day, hours in days.items()}
+                for pid, days in result.pilot_daily_hours.items()
+            },
+            'total_pilots_used': result.total_pilots_used,
+            'overall_compliance_rate': result.overall_compliance_rate,
+            'is_valid': is_valid,
+            'violations': violations,
+            'pilot_utilization': utilization,
+            'pilots': [
+                {
+                    'pilot_id': p.pilot_id,
+                    'name': p.name,
+                    'certification': p.certification,
+                    'home_base': p.home_base
+                }
+                for p in pilots
+            ],
+            'strategy': strategy,
+            'parameters': {
+                'num_pilots': num_pilots,
+                'min_rest_hours': min_rest_hours,
+                'max_daily_hours': max_daily_hours,
+                'base_airport': base_airport
+            }
+        }
+        
+        # Add daily schedules
+        for day, daily in result.daily_schedules.items():
+            response['daily_schedules'][str(day)] = {
+                'day': day,
+                'date': daily.date.isoformat(),
+                'assignments': [
+                    {
+                        'pilot_id': a.pilot_id,
+                        'flight_id': a.flight_id,
+                        'flight_start': a.flight_start.isoformat(),
+                        'flight_end': a.flight_end.isoformat()
+                    }
+                    for a in daily.assignments
+                ],
+                'pilots_active': daily.pilots_active,
+                'flights_scheduled': daily.flights_scheduled,
+                'compliance_rate': daily.compliance_rate
+            }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/runways/schedule-constrained', methods=['POST'])
+def schedule_constrained_runways():
+    """Schedule flights with limited runways (fixed constraint)."""
+    data = request.get_json()
+    
+    # Get flights from request
+    flight_data = data.get('flights', [])
+    if not flight_data:
+        return jsonify({'error': 'Flights required'}), 400
+    
+    # Get parameters
+    max_runways = min(max(data.get('max_runways', 2), 1), 10)  # 1-10 runways
+    algorithm = data.get('algorithm', 'priority_based')
+    
+    try:
+        # Convert flight data to Flight objects
+        flights = []
+        for fd in flight_data:
+            flight = Flight(
+                flight_id=fd['flight_id'],
+                origin=fd['origin'],
+                destination=fd['destination'],
+                arrival_start=datetime.fromisoformat(fd['arrival_start']),
+                occupancy_time=fd['occupancy_time'],
+                priority=fd.get('priority', 5),
+                passenger_count=fd.get('passenger_count', 150),
+                distance=fd.get('distance', 1000.0),
+                flight_duration=fd.get('flight_duration', 2.0),
+                day=fd.get('day', 0)
+            )
+            flights.append(flight)
+        
+        # Create constrained scheduler
+        scheduler = ConstrainedRunwayScheduler(max_runways=max_runways, algorithm=algorithm)
+        
+        # Schedule flights
+        result = scheduler.schedule(flights)
+        
+        # Get statistics
+        stats = scheduler.get_statistics(result)
+        
+        # Convert to JSON
+        runway_assignments = {}
+        for runway_id, rw_flights in result.runway_assignments.items():
+            runway_assignments[str(runway_id)] = [
+                flight_to_dict(f) 
+                for f in sorted(rw_flights, key=lambda x: x.arrival_start)
+            ]
+        
+        response = {
+            'flights': [flight_to_dict(f) for f in result.flights],
+            'num_runways': result.num_runways,
+            'runway_assignments': runway_assignments,
+            'delayed_flights': [flight_to_dict(f) for f in result.delayed_flights],
+            'total_delay_minutes': result.total_delay_minutes,
+            'avg_delay_minutes': result.avg_delay_minutes,
+            'on_time_percentage': result.on_time_percentage,
+            'statistics': stats,
+            'algorithm': algorithm,
+            'parameters': {
+                'max_runways': max_runways
+            }
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/runways/compare-algorithms', methods=['POST'])
+def compare_constrained_algorithms():
+    """Compare all constrained scheduling algorithms."""
+    data = request.get_json()
+    
+    # Get flights from request
+    flight_data = data.get('flights', [])
+    if not flight_data:
+        return jsonify({'error': 'Flights required'}), 400
+    
+    max_runways = min(max(data.get('max_runways', 2), 1), 10)
+    
+    try:
+        # Convert flight data to Flight objects
+        flights = []
+        for fd in flight_data:
+            flight = Flight(
+                flight_id=fd['flight_id'],
+                origin=fd['origin'],
+                destination=fd['destination'],
+                arrival_start=datetime.fromisoformat(fd['arrival_start']),
+                occupancy_time=fd['occupancy_time'],
+                priority=fd.get('priority', 5),
+                passenger_count=fd.get('passenger_count', 150),
+                distance=fd.get('distance', 1000.0),
+                flight_duration=fd.get('flight_duration', 2.0),
+                day=fd.get('day', 0)
+            )
+            flights.append(flight)
+        
+        # Compare algorithms
+        scheduler = ConstrainedRunwayScheduler(max_runways=max_runways)
+        results = scheduler.compare_algorithms(flights, max_runways)
+        
+        # Convert to JSON
+        comparison = {}
+        for algo_name, result in results.items():
+            comparison[algo_name] = {
+                'delayed_flights': len(result.delayed_flights),
+                'total_delay_minutes': result.total_delay_minutes,
+                'avg_delay_minutes': result.avg_delay_minutes,
+                'on_time_percentage': result.on_time_percentage
+            }
+        
+        return jsonify({
+            'comparison': comparison,
+            'max_runways': max_runways,
+            'total_flights': len(flights)
+        })
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500

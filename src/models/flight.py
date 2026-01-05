@@ -25,6 +25,11 @@ class Flight:
         occupancy_time (int): Time needed to land and clear runway (in minutes)
         runway_id (Optional[int]): Assigned runway ID after scheduling
         priority (int): Flight priority (1=highest, lower numbers = higher priority)
+        passenger_count (int): Number of passengers
+        distance (float): Flight distance in kilometers
+        flight_duration (float): Flight duration in hours
+        day (int): Day number (for multi-day scheduling)
+        delayed_by (int): Minutes the flight was delayed (for constrained scheduling)
     """
     flight_id: str
     origin: str
@@ -34,6 +39,11 @@ class Flight:
     arrival_end: datetime = field(init=False)
     runway_id: Optional[int] = field(default=None)
     priority: int = field(default=5)  # Default medium priority
+    passenger_count: int = field(default=150)  # Default passenger count
+    distance: float = field(default=1000.0)  # Default distance in km
+    flight_duration: float = field(default=2.0)  # Default duration in hours
+    day: int = field(default=0)  # Default to day 0
+    delayed_by: int = field(default=0)  # Default no delay
     
     def __post_init__(self):
         """Calculate arrival end time and validate data."""

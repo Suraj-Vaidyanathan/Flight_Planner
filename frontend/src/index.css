@@ -493,3 +493,158 @@ body {
 .pilot-card {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* Multi-Day and Constrained Runway Styles */
+.comparison-results {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+}
+
+.algo-stat {
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--surface);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.algo-stat strong {
+  display: block;
+  color: var(--secondary);
+  text-transform: capitalize;
+  margin-bottom: 0.25rem;
+}
+
+.success-badge {
+  padding: 0.5rem 1rem;
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--secondary);
+  border-radius: 6px;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.error-badge {
+  padding: 0.5rem 1rem;
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+  border-radius: 6px;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Constrained Runway Viewer Styles */
+.constrained-runway-viewer {
+  padding: 2rem;
+}
+
+.algorithm-info {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.runway-sections {
+  margin-top: 2rem;
+}
+
+.runway-section {
+  margin-bottom: 2rem;
+  border: 1px solid var(--surface-light);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.runway-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.flights-timeline {
+  padding: 1rem;
+  background: var(--surface);
+}
+
+.flight-card {
+  background: var(--surface-light);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition: all 0.2s;
+}
+
+.flight-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+.flight-card.delayed {
+  border-left: 4px solid var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.delay-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--warning);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.priority-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.priority-1, .priority-2, .priority-3 {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+.priority-4, .priority-5, .priority-6 {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--warning);
+}
+
+.priority-7, .priority-8, .priority-9, .priority-10 {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--primary);
+}
+
+.delayed-summary {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+}
+
+.delayed-summary h4 {
+  color: var(--warning);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

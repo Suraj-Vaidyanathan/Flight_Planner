@@ -17,11 +17,70 @@ const PILOT_COLORS = [
   '#f43f5e', // Rose
 ];
 
-function PilotScheduleViewer({ pilotScheduleResult }) {
-  // Group assignments by pilot
-  const { assignmentsByPilot, timelineData } = useMemo(() => {
-    if (!pilotScheduleResult || !pilotScheduleResult.assignments) {
-      return { assignmentsByPilot: {}, timelineData: [] };
+function PilotScheduleViewer({ pilotScheduleResult, isMultiDay = false }) {
+  // Group assignments by pilot and optionally by day
+  const { assignmentsByPilot, timelineData, assignmentsByDay } = useMemo(() => {
+    if (!pilotScheduleResult) {
+      return { assignmentsByPilot: {}, timelineData: [], assignmentsByDay: {} };
+    }
+    
+    // Handle multi-day schedules
+    if (isMultiDay && pilotScheduleResult.all_assignments) {
+      const byPilot = {};
+      const byDay = {};
+      
+      console.log('🔍 Processing all_assignments:', pilotScheduleResult.all_assignments.length, 'assignments');
+      console.log('🔍 First few assignments:', pilotScheduleResult.all_assignments.slice(0, 3));
+      
+      pilotScheduleResult.all_assignments.forEach(assignment => {
+        const pilotId = assignment.pilot_id;
+        const day = assignment.day || 0;
+        
+        if (assignment.day === undefined) {
+          console.warn('⚠️ Assignment missing day property:', assignment);
+        }
+        
+        // By pilot
+        if (!byPilot[pilotId]) {
+          byPilot[pilotId] = [];
+        }
+        byPilot[pilotId].push(assignment);
+        
+        // By day
+        if (!byDay[day]) {
+          byDay[day] = [];
+        }
+        byDay[day].push(assignment);
+      });
+      
+      // Sort assignments
+      Object.keys(byPilot).forEach(pilotId => {
+        byPilot[pilotId].sort((a, b) => {
+          if (a.day !== b.day) return a.day - b.day;
+          return new Date(a.flight_start) - new Date(b.flight_start);
+        });
+      });
+      
+      console.log('🔍 Grouped assignments by day:', byDay);
+      console.log('🔍 Days found:', Object.keys(byDay));
+      
+      // Create timeline data
+      const timeline = Object.keys(byPilot).map(pilotId => ({
+        pilotId,
+        pilot: { pilot_id: pilotId },
+        assignments: byPilot[pilotId]
+      }));
+      
+      return {
+        assignmentsByPilot: byPilot,
+        timelineData: timeline,
+        assignmentsByDay: byDay
+      };
+    }
+    
+    // Single-day schedule
+    if (!pilotScheduleResult.assignments) {
+      return { assignmentsByPilot: {}, timelineData: [], assignmentsByDay: {} };
     }
     
     const byPilot = {};
@@ -52,9 +111,10 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
     
     return {
       assignmentsByPilot: byPilot,
-      timelineData: timeline
+      timelineData: timeline,
+      assignmentsByDay: {}
     };
-  }, [pilotScheduleResult]);
+  }, [pilotScheduleResult, isMultiDay]);
   
   if (!pilotScheduleResult) {
     return <div className="loading">No pilot schedule data available</div>;
@@ -69,6 +129,7 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
   };
   
   const formatHours = (hours) => {
+    if (hours === undefined || hours === null || isNaN(hours)) return 'N/A';
     return `${hours.toFixed(1)}h`;
   };
   
@@ -87,30 +148,41 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
     <div>
       {/* Header Stats */}
       <div className="runway-chart">
-        <h3>👨‍✈️ Pilot Schedule Overview</h3>
+        <h3>👨‍✈️ {isMultiDay ? 'Multi-Day ' : ''}Pilot Schedule Overview</h3>
         <div className="stats-grid">
           <div className="stat-card">
             <div className="value" style={{ color: '#10b981' }}>
-              {pilotScheduleResult.total_pilots_used}/{pilotScheduleResult.pilots.length}
+              {isMultiDay ? pilotScheduleResult.total_pilots_used : 
+                `${pilotScheduleResult.total_pilots_used}/${pilotScheduleResult.pilots.length}`}
             </div>
             <div className="label">Pilots Used</div>
           </div>
           <div className="stat-card">
-            <div className="value">{pilotScheduleResult.assignments.length}</div>
+            <div className="value">
+              {isMultiDay ? pilotScheduleResult.all_assignments.length : pilotScheduleResult.assignments.length}
+            </div>
             <div className="label">Assigned Flights</div>
           </div>
-          <div className="stat-card">
-            <div className="value" style={{ color: pilotScheduleResult.unassigned_flights.length > 0 ? '#f59e0b' : '#10b981' }}>
-              {pilotScheduleResult.unassigned_flights.length}
+          {isMultiDay && (
+            <div className="stat-card">
+              <div className="value">{Object.keys(pilotScheduleResult.daily_schedules).length}</div>
+              <div className="label">Days</div>
             </div>
-            <div className="label">Unassigned</div>
-          </div>
+          )}
+          {!isMultiDay && (
+            <div className="stat-card">
+              <div className="value" style={{ color: pilotScheduleResult.unassigned_flights.length > 0 ? '#f59e0b' : '#10b981' }}>
+                {pilotScheduleResult.unassigned_flights.length}
+              </div>
+              <div className="label">Unassigned</div>
+            </div>
+          )}
           <div className="stat-card">
             <div className="value" style={{ 
-              color: pilotScheduleResult.compliance_rate >= 95 ? '#10b981' : 
-                     pilotScheduleResult.compliance_rate >= 80 ? '#f59e0b' : '#ef4444' 
+              color: (isMultiDay ? pilotScheduleResult.overall_compliance_rate : pilotScheduleResult.compliance_rate) >= 95 ? '#10b981' : 
+                     (isMultiDay ? pilotScheduleResult.overall_compliance_rate : pilotScheduleResult.compliance_rate) >= 80 ? '#f59e0b' : '#ef4444' 
             }}>
-              {pilotScheduleResult.compliance_rate}%
+              {isMultiDay ? pilotScheduleResult.overall_compliance_rate.toFixed(1) : pilotScheduleResult.compliance_rate}%
             </div>
             <div className="label">Compliance</div>
           </div>
@@ -138,12 +210,111 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
             <>
               <AlertTriangle size={20} color="#ef4444" />
               <span style={{ color: '#ef4444', fontWeight: '500' }}>
-                ⚠ Schedule has violations - See details below
+                ⚠ Schedule has {isMultiDay && pilotScheduleResult.violations ? pilotScheduleResult.violations.length : ''} violations - See details below
               </span>
             </>
           )}
         </div>
       </div>
+      
+      {/* Multi-Day Breakdown - Show assignments grouped by day */}
+      {isMultiDay && assignmentsByDay && Object.keys(assignmentsByDay).length > 0 && (
+        <div className="runway-chart">
+          <h3>📅 Day-by-Day Breakdown</h3>
+          <div style={{
+            maxHeight: '600px',
+            overflowY: 'auto',
+            paddingRight: '0.5rem'
+          }}>
+            {Object.keys(assignmentsByDay).sort((a, b) => parseInt(a) - parseInt(b)).map(day => {
+              const dayAssignments = assignmentsByDay[day];
+              const daySchedule = pilotScheduleResult.daily_schedules ? pilotScheduleResult.daily_schedules[day] : null;
+              
+              return (
+                <div 
+                  key={day}
+                  style={{
+                    marginBottom: '1.5rem',
+                    padding: '1rem',
+                    background: 'var(--surface)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.1)'
+                  }}
+                >
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1rem',
+                    paddingBottom: '0.75rem',
+                    borderBottom: '1px solid rgba(255,255,255,0.1)'
+                  }}>
+                    <h4 style={{ margin: 0 }}>Day {parseInt(day) + 1}</h4>
+                    {daySchedule && (
+                      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem' }}>
+                        <span style={{ color: '#10b981' }}>
+                          {daySchedule.total_pilots_used} pilots
+                        </span>
+                        <span>•</span>
+                        <span>{daySchedule.assignments.length} flights</span>
+                        <span>•</span>
+                        <span style={{ 
+                          color: daySchedule.compliance_rate >= 95 ? '#10b981' : '#f59e0b' 
+                        }}>
+                          {daySchedule.compliance_rate.toFixed(2)}% compliant
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div style={{ 
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                    gap: '0.75rem'
+                  }}>
+                    {dayAssignments.map((assignment, idx) => (
+                      <div
+                        key={`${day}-${assignment.flight_id}`}
+                        style={{
+                          padding: '0.75rem',
+                          background: 'rgba(255,255,255,0.05)',
+                          borderRadius: '6px',
+                          borderLeft: `3px solid ${getPilotColor(dayAssignments.findIndex(a => a.pilot_id === assignment.pilot_id) % PILOT_COLORS.length)}`
+                        }}
+                      >
+                        <div style={{ 
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: '0.5rem'
+                        }}>
+                          <strong style={{ fontSize: '0.9rem' }}>{assignment.flight_id}</strong>
+                          <span style={{ 
+                            fontSize: '0.75rem',
+                            padding: '0.125rem 0.5rem',
+                            background: 'rgba(59, 130, 246, 0.2)',
+                            borderRadius: '4px',
+                            color: '#3b82f6'
+                          }}>
+                            {assignment.pilot_id}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {formatTime(assignment.flight_start)} - {formatTime(assignment.flight_end)}
+                        </div>
+                        {assignment.duration_hours !== undefined && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                            Duration: {formatHours(assignment.duration_hours)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       
       {/* Pilot Cards */}
       <div className="runway-chart">
@@ -156,7 +327,11 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
         }}>
           {timelineData.map((data, index) => {
             const { pilot, assignments } = data;
-            const utilization = pilotScheduleResult.pilot_utilization[pilot.pilot_id] || 0;
+            // Safely get utilization, ensuring it's a valid number
+            const rawUtilization = pilotScheduleResult.pilot_utilization ? 
+              pilotScheduleResult.pilot_utilization[pilot.pilot_id] : undefined;
+            const utilization = typeof rawUtilization === 'number' && !isNaN(rawUtilization) ? 
+              rawUtilization : 0;
             
             return (
               <div 
@@ -193,7 +368,7 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
                         borderRadius: '50%',
                         background: getPilotColor(index)
                       }} />
-                      <strong style={{ fontSize: '1rem' }}>{pilot.name}</strong>
+                      <strong style={{ fontSize: '1rem' }}>{pilot.name || pilot.pilot_id}</strong>
                     </div>
                     <div style={{ 
                       fontSize: '0.75rem', 
@@ -203,11 +378,15 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
                       gap: '0.5rem'
                     }}>
                       <span>{pilot.pilot_id}</span>
-                      <span>•</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <Award size={12} />
-                        {pilot.certification}
-                      </span>
+                      {pilot.certification && (
+                        <>
+                          <span>•</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Award size={12} />
+                            {pilot.certification}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   
@@ -224,40 +403,42 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
                   </div>
                 </div>
                 
-                {/* Hours Stats */}
-                <div style={{ 
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '0.5rem',
-                  marginBottom: '0.75rem'
-                }}>
+                {/* Hours Stats - Only show for single-day mode */}
+                {!isMultiDay && pilot.total_hours_today !== undefined && (
                   <div style={{ 
-                    padding: '0.5rem',
-                    background: 'rgba(59, 130, 246, 0.1)',
-                    borderRadius: '6px',
-                    textAlign: 'center'
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.5rem',
+                    marginBottom: '0.75rem'
                   }}>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#3b82f6' }}>
-                      {formatHours(pilot.total_hours_today)}
+                    <div style={{ 
+                      padding: '0.5rem',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      borderRadius: '6px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#3b82f6' }}>
+                        {formatHours(pilot.total_hours_today)}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        Flown
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      Flown
+                    <div style={{ 
+                      padding: '0.5rem',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      borderRadius: '6px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#10b981' }}>
+                        {formatHours(pilot.remaining_hours)}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        Remaining
+                      </div>
                     </div>
                   </div>
-                  <div style={{ 
-                    padding: '0.5rem',
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    borderRadius: '6px',
-                    textAlign: 'center'
-                  }}>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#10b981' }}>
-                      {formatHours(pilot.remaining_hours)}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      Remaining
-                    </div>
-                  </div>
-                </div>
+                )}
                 
                 {/* Assignments */}
                 <div style={{ fontSize: '0.85rem' }}>
@@ -299,9 +480,11 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
                             marginBottom: '0.25rem'
                           }}>
                             <strong>{assignment.flight_id}</strong>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                              {formatHours(assignment.duration_hours)}
-                            </span>
+                            {assignment.duration_hours !== undefined && (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                {formatHours(assignment.duration_hours)}
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             {formatTime(assignment.flight_start)} - {formatTime(assignment.flight_end)}
@@ -328,8 +511,8 @@ function PilotScheduleViewer({ pilotScheduleResult }) {
         </div>
       </div>
       
-      {/* Unassigned Flights */}
-      {pilotScheduleResult.unassigned_flights.length > 0 && (
+      {/* Unassigned Flights - Only for single-day mode */}
+      {!isMultiDay && pilotScheduleResult.unassigned_flights && pilotScheduleResult.unassigned_flights.length > 0 && (
         <div className="runway-chart">
           <h3 style={{ color: '#f59e0b' }}>
             <AlertTriangle size={20} /> Unassigned Flights

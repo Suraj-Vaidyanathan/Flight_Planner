@@ -139,15 +139,17 @@ class PilotAssignment:
         assignment_time (datetime): When assignment was made
         flight_start (datetime): Flight start time
         flight_end (datetime): Flight end time
+        day (int): Day number (for multi-day schedules)
     """
     pilot_id: str
     flight_id: str
     assignment_time: datetime
     flight_start: datetime
     flight_end: datetime
+    day: int = 0
     
     def __str__(self) -> str:
         return (
             f"Assignment: Pilot {self.pilot_id} -> Flight {self.flight_id} | "
-            f"{self.flight_start.strftime('%H:%M')} - {self.flight_end.strftime('%H:%M')}"
+            f"Day {self.day} | {self.flight_start.strftime('%H:%M')} - {self.flight_end.strftime('%H:%M')}"
         )

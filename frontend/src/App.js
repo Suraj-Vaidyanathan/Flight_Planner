@@ -9,6 +9,7 @@ import {
 import api from './api';
 import RunwayScheduleChart from './components/RunwayScheduleChart';
 import PilotScheduleViewer from './components/PilotScheduleViewer';
+import ConstrainedRunwayViewer from './components/ConstrainedRunwayViewer';
 
 // Fix Leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -104,7 +105,7 @@ function splitPathAtAntimeridian(coordinates) {
 }
 
 function App() {
-  const [view, setView] = useState('route'); // 'route' or 'schedule'
+  const [view, setView] = useState('route'); // 'route', 'schedule', 'pilots', or 'constrained'
   const [airports, setAirports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -128,6 +129,17 @@ function App() {
   const [minRestHours, setMinRestHours] = useState(10.0);
   const [maxDailyHours, setMaxDailyHours] = useState(8.0);
   const [pilotScheduleResult, setPilotScheduleResult] = useState(null);
+  
+  // Multi-day pilot scheduling state
+  const [numDays, setNumDays] = useState(3);
+  const [flightPattern, setFlightPattern] = useState('realistic');
+  const [multiDayPilotResult, setMultiDayPilotResult] = useState(null);
+  
+  // Constrained runway scheduling state
+  const [maxRunways, setMaxRunways] = useState(2);
+  const [constrainedAlgorithm, setConstrainedAlgorithm] = useState('priority_based');
+  const [constrainedResult, setConstrainedResult] = useState(null);
+  const [algorithmComparison, setAlgorithmComparison] = useState(null);
   
   // Load airports on mount
   useEffect(() => {
@@ -191,23 +203,9 @@ function App() {
     }
   };
   
-  const generateFlights = async () => {
-    setLoading(true);
-    setError(null);
-    setScheduleResult(null); // Clear previous results
-    
-    try {
-      const result = await api.generateFlights(scheduleDest, numFlights);
-      setGeneratedFlights(result.flights);
-      
-      // Automatically schedule after generating
-      const scheduleResultData = await api.scheduleFlights(result.flights, algorithm);
-      setScheduleResult(scheduleResultData);
-    } catch (err) {
-      setError(err.message || 'Failed to generate flights');
-    } finally {
-      setLoading(false);
-    }
+  const generateFlightsForRunway = async () => {
+    // Use the same multi-day flight generator
+    await generateMultiDayFlights();
   };
   
   const runPilotScheduler = async () => {
@@ -233,6 +231,106 @@ function App() {
       setPilotScheduleResult(result);
     } catch (err) {
       setError(err.message || 'Failed to run pilot scheduler');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateMultiDayFlights = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const result = await api.generateMultiDayFlights(
+        scheduleDest,
+        numDays,
+        numFlights, // numFlights is already "flights per day"
+        flightPattern
+      );
+      
+      setGeneratedFlights(result.flights);
+      setScheduleResult(null);
+      setPilotScheduleResult(null);
+      setMultiDayPilotResult(null);
+      setConstrainedResult(null);
+    } catch (err) {
+      setError(err.message || 'Failed to generate multi-day flights');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runMultiDayPilotScheduler = async () => {
+    if (!generatedFlights || generatedFlights.length === 0) {
+      setError('Please generate flights first');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const result = await api.schedulePilotsMultiDay(
+        generatedFlights,
+        numPilots,
+        {
+          minRestHours,
+          maxDailyHours,
+          strategy: pilotStrategy,
+          baseAirport: scheduleDest
+        }
+      );
+      
+      setMultiDayPilotResult(result);
+    } catch (err) {
+      setError(err.message || 'Failed to schedule pilots');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runConstrainedScheduler = async () => {
+    if (!generatedFlights || generatedFlights.length === 0) {
+      setError('Please generate flights first');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const result = await api.scheduleConstrainedRunways(
+        generatedFlights,
+        maxRunways,
+        constrainedAlgorithm
+      );
+      
+      setConstrainedResult(result);
+    } catch (err) {
+      setError(err.message || 'Failed to schedule constrained runways');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const compareAlgorithms = async () => {
+    if (!generatedFlights || generatedFlights.length === 0) {
+      setError('Please generate flights first');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const result = await api.compareConstrainedAlgorithms(
+        generatedFlights,
+        maxRunways
+      );
+      
+      setAlgorithmComparison(result);
+    } catch (err) {
+      setError(err.message || 'Failed to compare algorithms');
     } finally {
       setLoading(false);
     }
@@ -314,6 +412,13 @@ function App() {
           >
             <Users size={18} />
             Pilot Scheduler
+          </button>
+          <button 
+            className={`nav-btn ${view === 'constrained' ? 'active' : ''}`}
+            onClick={() => setView('constrained')}
+          >
+            <Layers size={18} />
+            Constrained Runways
           </button>
         </nav>
       </header>
@@ -448,13 +553,14 @@ function App() {
             </>
           ) : view === 'schedule' ? (
             <>
-              {/* Scheduler Panel */}
+              {/* Multi-Day Flight Generator Panel */}
               <div className="panel">
-                <h2><Layers size={18} /> Runway Scheduler</h2>
+                <h2><Calendar size={18} /> Multi-Day Flight Generator</h2>
                 
                 <div className="form-group">
                   <label>Destination Airport</label>
-                  <select value={scheduleDest} onChange={(e) => { setScheduleDest(e.target.value); setGeneratedFlights(null); setScheduleResult(null); }}>
+                  <select value={scheduleDest} onChange={(e) => setScheduleDest(e.target.value)}>
+                    <option value="">Select airport...</option>
                     {airports.map(a => (
                       <option key={a.id} value={a.id}>{a.id} - {a.name}</option>
                     ))}
@@ -462,33 +568,65 @@ function App() {
                 </div>
                 
                 <div className="form-group">
-                  <label>Number of Flights</label>
+                  <label>Number of Days: {numDays}</label>
                   <input 
-                    type="number" 
-                    value={numFlights}
-                    onChange={(e) => setNumFlights(Number(e.target.value))}
-                    min="1"
-                    max="30"
+                    type="range" 
+                    min="1" 
+                    max="7" 
+                    value={numDays}
+                    onChange={(e) => setNumDays(parseInt(e.target.value))}
                   />
                 </div>
                 
+                <div className="form-group">
+                  <label>Flights per Day: ~{numFlights}</label>
+                  <input 
+                    type="range" 
+                    min="5" 
+                    max="30" 
+                    value={numFlights}
+                    onChange={(e) => setNumFlights(parseInt(e.target.value))}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Flight Pattern</label>
+                  <select value={flightPattern} onChange={(e) => setFlightPattern(e.target.value)}>
+                    <option value="realistic">Realistic (Peak Hours)</option>
+                    <option value="peak_hours">Heavy Peak Hours</option>
+                    <option value="uniform">Uniform Distribution</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+                
                 <button 
-                  className="btn btn-secondary" 
-                  onClick={generateFlights}
-                  disabled={loading}
-                  style={{ marginBottom: '0.5rem' }}
+                  className="btn btn-primary"
+                  onClick={generateMultiDayFlights} 
+                  disabled={loading || !scheduleDest}
                 >
                   {loading ? <RefreshCw size={18} className="spin" /> : <RefreshCw size={18} />}
-                  Generate New Flights
+                  Generate Multi-Day Flights
                 </button>
                 
                 {generatedFlights && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.5rem 0' }}>
-                    ✓ {generatedFlights.length} flights generated for {scheduleDest}
-                  </p>
+                  <div className="stats-grid" style={{ marginTop: '1rem' }}>
+                    <div className="stat-card">
+                      <div className="value">{generatedFlights.length}</div>
+                      <div className="label">Total Flights</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{numDays}</div>
+                      <div className="label">Days</div>
+                    </div>
+                  </div>
                 )}
+              </div>
+              
+              {/* Runway Scheduler Panel */}
+              <div className="panel">
+                <h2><Layers size={18} /> Runway Scheduler</h2>
                 
-                <div className="form-group" style={{ marginTop: '1rem' }}>
+                <div className="form-group">
                   <label>Algorithm</label>
                   <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>
                     <option value="dsatur">DSatur (Recommended)</option>
@@ -503,12 +641,12 @@ function App() {
                   disabled={loading || !generatedFlights}
                 >
                   {loading ? <RefreshCw size={18} className="spin" /> : <Timer size={18} />}
-                  {generatedFlights ? 'Run Scheduler' : 'Generate Flights First'}
+                  {generatedFlights ? 'Schedule Runways' : 'Generate Flights First'}
                 </button>
                 
                 {generatedFlights && (
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                    💡 Change algorithm and click "Run Scheduler" to compare results with same flights
+                    💡 Change algorithm and re-run to compare results
                   </p>
                 )}
               </div>
@@ -561,113 +699,175 @@ function App() {
                 </div>
               )}
             </>
-          ) : (
+          ) : view === 'pilots' ? (
             <>
-              {/* Pilot Scheduler Panel */}
+              {/* Multi-Day Flight Generator Panel */}
               <div className="panel">
-                <h2><Users size={18} /> Pilot Scheduler</h2>
+                <h2><Calendar size={18} /> Multi-Day Flight Generator</h2>
                 
                 <div className="form-group">
-                  <label>Number of Pilots</label>
+                  <label>Destination Airport</label>
+                  <select value={scheduleDest} onChange={(e) => setScheduleDest(e.target.value)}>
+                    <option value="">Select airport...</option>
+                    {airports.map(a => (
+                      <option key={a.id} value={a.id}>{a.id} - {a.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label>Number of Days: {numDays}</label>
                   <input 
-                    type="number" 
+                    type="range" 
+                    min="1" 
+                    max="7" 
+                    value={numDays}
+                    onChange={(e) => setNumDays(parseInt(e.target.value))}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Flights per Day: ~{numFlights}</label>
+                  <input 
+                    type="range" 
+                    min="5" 
+                    max="30" 
+                    value={numFlights}
+                    onChange={(e) => setNumFlights(parseInt(e.target.value))}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Flight Pattern</label>
+                  <select value={flightPattern} onChange={(e) => setFlightPattern(e.target.value)}>
+                    <option value="realistic">Realistic (Peak Hours)</option>
+                    <option value="peak_hours">Heavy Peak Hours</option>
+                    <option value="uniform">Uniform Distribution</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+                
+                <button 
+                  className="btn btn-primary"
+                  onClick={generateMultiDayFlights} 
+                  disabled={loading || !scheduleDest}
+                >
+                  {loading ? <RefreshCw size={18} className="spin" /> : <RefreshCw size={18} />}
+                  Generate Multi-Day Flights
+                </button>
+                
+                {generatedFlights && (
+                  <div className="stats-grid" style={{ marginTop: '1rem' }}>
+                    <div className="stat-card">
+                      <div className="value">{generatedFlights.length}</div>
+                      <div className="label">Total Flights</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{numDays}</div>
+                      <div className="label">Days</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Multi-Day Pilot Scheduler Panel */}
+              <div className="panel">
+                <h2><Users size={18} /> Multi-Day Pilot Scheduler</h2>
+                
+                <div className="form-group">
+                  <label>Number of Pilots: {numPilots}</label>
+                  <input 
+                    type="range"
+                    min="1"
+                    max="30"
                     value={numPilots}
                     onChange={(e) => setNumPilots(Number(e.target.value))}
-                    min="1"
-                    max="20"
                   />
-                  <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                    Recommended: {Math.ceil(numFlights / 2)} pilots for {numFlights} flights
-                  </small>
+                  {generatedFlights && (
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                      Recommended: {Math.ceil(generatedFlights.length / 10)} pilots
+                    </small>
+                  )}
                 </div>
                 
                 <div className="form-group">
                   <label>Scheduling Strategy</label>
                   <select value={pilotStrategy} onChange={(e) => setPilotStrategy(e.target.value)}>
-                    <option value="least_busy">Least Busy (Fair Distribution)</option>
+                    <option value="least_busy">Least Busy (Fair Distribution) ⭐</option>
                     <option value="most_available">Most Available (Max Utilization)</option>
                     <option value="round_robin">Round Robin (Equal Assignments)</option>
                   </select>
                 </div>
                 
                 <div className="form-group">
-                  <label>Min Rest Hours (FAA: 10h)</label>
+                  <label>Min Rest Hours: {minRestHours}h</label>
                   <input 
-                    type="number" 
-                    value={minRestHours}
-                    onChange={(e) => setMinRestHours(Number(e.target.value))}
-                    min="0"
-                    max="24"
+                    type="range"
+                    min="8"
+                    max="14"
                     step="0.5"
+                    value={minRestHours}
+                    onChange={(e) => setMinRestHours(parseFloat(e.target.value))}
                   />
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    FAA minimum: 10 hours
+                  </small>
                 </div>
                 
                 <div className="form-group">
-                  <label>Max Daily Hours (FAA: 8h)</label>
+                  <label>Max Daily Hours: {maxDailyHours}h</label>
                   <input 
-                    type="number" 
-                    value={maxDailyHours}
-                    onChange={(e) => setMaxDailyHours(Number(e.target.value))}
-                    min="1"
-                    max="24"
+                    type="range"
+                    min="6"
+                    max="10"
                     step="0.5"
+                    value={maxDailyHours}
+                    onChange={(e) => setMaxDailyHours(parseFloat(e.target.value))}
                   />
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    FAA maximum: 8 hours
+                  </small>
                 </div>
                 
                 <button 
                   className="btn btn-primary" 
-                  onClick={runPilotScheduler}
-                  disabled={loading || !scheduleResult}
+                  onClick={runMultiDayPilotScheduler} 
+                  disabled={loading || !generatedFlights}
                 >
-                  {loading ? <RefreshCw size={18} className="spin" /> : <Users size={18} />}
-                  {scheduleResult ? 'Assign Pilots' : 'Run Runway Scheduler First'}
+                  {loading ? <RefreshCw size={18} className="spin" /> : <Play size={18} />}
+                  {generatedFlights ? 'Assign Pilots (Multi-Day)' : 'Generate Flights First'}
                 </button>
                 
-                {!scheduleResult && (
+                {!generatedFlights && (
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                    💡 Generate and schedule flights in the Runway Scheduler tab first
+                    💡 Generate multi-day flights first
                   </p>
                 )}
               </div>
               
-              {/* Pilot Schedule Stats */}
-              {pilotScheduleResult && (
+              {/* Multi-Day Pilot Stats */}
+              {multiDayPilotResult && (
                 <div className="panel">
-                  <h2><AlertCircle size={18} /> Pilot Stats</h2>
-                  
-                  <div style={{ 
-                    marginBottom: '1rem', 
-                    padding: '0.5rem 0.75rem', 
-                    background: 'var(--surface)', 
-                    borderRadius: '6px',
-                    fontSize: '0.85rem'
-                  }}>
-                    <strong>Strategy:</strong> {pilotScheduleResult.strategy.replace('_', ' ')}
-                  </div>
+                  <h2><AlertCircle size={18} /> Multi-Day Stats</h2>
                   
                   <div className="stats-grid">
                     <div className="stat-card">
+                      <div className="value">{Object.keys(multiDayPilotResult.daily_schedules).length}</div>
+                      <div className="label">Days</div>
+                    </div>
+                    <div className="stat-card">
                       <div className="value" style={{ color: '#10b981' }}>
-                        {pilotScheduleResult.total_pilots_used}
+                        {multiDayPilotResult.total_pilots_used}
                       </div>
-                      <div className="label">Active Pilots</div>
+                      <div className="label">Pilots Used</div>
                     </div>
                     <div className="stat-card">
-                      <div className="value">{pilotScheduleResult.assignments.length}</div>
-                      <div className="label">Assigned</div>
+                      <div className="value">{multiDayPilotResult.all_assignments.length}</div>
+                      <div className="label">Assignments</div>
                     </div>
                     <div className="stat-card">
-                      <div className="value" style={{ color: pilotScheduleResult.unassigned_flights.length > 0 ? '#f59e0b' : '#10b981' }}>
-                        {pilotScheduleResult.unassigned_flights.length}
-                      </div>
-                      <div className="label">Unassigned</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="value" style={{ 
-                        color: pilotScheduleResult.compliance_rate >= 95 ? '#10b981' : 
-                               pilotScheduleResult.compliance_rate >= 80 ? '#f59e0b' : '#ef4444' 
-                      }}>
-                        {pilotScheduleResult.compliance_rate}%
+                      <div className="value" style={{ color: '#10b981' }}>
+                        {multiDayPilotResult.overall_compliance_rate.toFixed(1)}%
                       </div>
                       <div className="label">Compliance</div>
                     </div>
@@ -679,19 +879,187 @@ function App() {
                       alignItems: 'center',
                       gap: '0.5rem',
                       padding: '0.5rem 1rem',
-                      background: pilotScheduleResult.is_valid ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                      color: pilotScheduleResult.is_valid ? 'var(--secondary)' : 'var(--danger)',
+                      background: multiDayPilotResult.is_valid ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                      color: multiDayPilotResult.is_valid ? 'var(--secondary)' : 'var(--danger)',
                       borderRadius: '8px',
                       fontSize: '0.875rem',
                       fontWeight: '500'
                     }}>
-                      {pilotScheduleResult.is_valid ? '✓ FAA Compliant' : '✗ Has Violations'}
+                      {multiDayPilotResult.is_valid ? '✅ FAA Compliant' : `⚠️ ${multiDayPilotResult.violations.length} Violations`}
                     </span>
                   </div>
                 </div>
               )}
             </>
-          )}
+          ) : view === 'constrained' ? (
+            <>
+              {/* Multi-Day Flight Generator Panel */}
+              <div className="panel">
+                <h2><Calendar size={18} /> Multi-Day Flight Generator</h2>
+                
+                <div className="form-group">
+                  <label>Destination Airport</label>
+                  <select value={scheduleDest} onChange={(e) => setScheduleDest(e.target.value)}>
+                    <option value="">Select airport...</option>
+                    {airports.map(a => (
+                      <option key={a.id} value={a.id}>{a.id} - {a.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label>Number of Days: {numDays}</label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="7" 
+                    value={numDays}
+                    onChange={(e) => setNumDays(parseInt(e.target.value))}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Flights per Day: ~{numFlights}</label>
+                  <input 
+                    type="range" 
+                    min="5" 
+                    max="30" 
+                    value={numFlights}
+                    onChange={(e) => setNumFlights(parseInt(e.target.value))}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Flight Pattern</label>
+                  <select value={flightPattern} onChange={(e) => setFlightPattern(e.target.value)}>
+                    <option value="realistic">Realistic (Peak Hours)</option>
+                    <option value="peak_hours">Heavy Peak Hours</option>
+                    <option value="uniform">Uniform Distribution</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+                
+                <button 
+                  className="btn btn-primary"
+                  onClick={generateMultiDayFlights} 
+                  disabled={loading || !scheduleDest}
+                >
+                  {loading ? <RefreshCw size={18} className="spin" /> : <RefreshCw size={18} />}
+                  Generate Multi-Day Flights
+                </button>
+                
+                {generatedFlights && (
+                  <div className="stats-grid" style={{ marginTop: '1rem' }}>
+                    <div className="stat-card">
+                      <div className="value">{generatedFlights.length}</div>
+                      <div className="label">Total Flights</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{numDays}</div>
+                      <div className="label">Days</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Constrained Runway Scheduler Panel */}
+              <div className="panel">
+                <h2><Layers size={18} /> Constrained Runway Scheduler</h2>
+                
+                <div className="form-group">
+                  <label>Max Runways: {maxRunways}</label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="10" 
+                    value={maxRunways}
+                    onChange={(e) => setMaxRunways(parseInt(e.target.value))}
+                  />
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    Limited runway capacity (flights may be delayed)
+                  </small>
+                </div>
+                
+                <div className="form-group">
+                  <label>Algorithm</label>
+                  <select value={constrainedAlgorithm} onChange={(e) => setConstrainedAlgorithm(e.target.value)}>
+                    <option value="priority_based">Priority Based</option>
+                    <option value="passenger_first">Passenger Count First</option>
+                    <option value="distance_first">Distance First</option>
+                    <option value="hybrid">Hybrid (Weighted)</option>
+                  </select>
+                </div>
+                
+                <button 
+                  className="btn btn-primary"
+                  onClick={runConstrainedScheduler} 
+                  disabled={loading || !generatedFlights}
+                >
+                  {loading ? <RefreshCw size={18} className="spin" /> : <Play size={18} />}
+                  Schedule with Constraints
+                </button>
+                
+                <button 
+                  className="btn"
+                  onClick={compareAlgorithms} 
+                  disabled={loading || !generatedFlights}
+                  style={{ marginTop: '8px' }}
+                >
+                  <RefreshCw size={16} />
+                  Compare All Algorithms
+                </button>
+              </div>
+              
+              {/* Constrained Stats */}
+              {constrainedResult && (
+                <div className="panel">
+                  <h2><AlertCircle size={18} /> Constraint Stats</h2>
+                  
+                  <div className="stats-grid">
+                    <div className="stat-card">
+                      <div className="value" style={{ color: '#10b981' }}>
+                        {constrainedResult.on_time_percentage.toFixed(1)}%
+                      </div>
+                      <div className="label">On-Time</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value" style={{ color: '#f59e0b' }}>
+                        {constrainedResult.delayed_flights.length}
+                      </div>
+                      <div className="label">Delayed</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{constrainedResult.total_delay_minutes}</div>
+                      <div className="label">Total Delay (min)</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Algorithm Comparison */}
+              {algorithmComparison && (
+                <div className="panel">
+                  <h2>🔄 Algorithm Comparison</h2>
+                  {Object.entries(algorithmComparison.comparison).map(([algo, stats]) => (
+                    <div key={algo} style={{
+                      padding: '0.75rem',
+                      marginBottom: '0.5rem',
+                      background: 'var(--surface)',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem'
+                    }}>
+                      <strong style={{ display: 'block', marginBottom: '0.25rem', textTransform: 'capitalize' }}>
+                        {algo.replace('_', ' ')}
+                      </strong>
+                      <div>Delayed: {stats.delayed_flights} flights</div>
+                      <div>Avg Delay: {stats.avg_delay_minutes.toFixed(1)}min</div>
+                      <div>On-Time: {stats.on_time_percentage.toFixed(1)}%</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
           
           {/* Error display */}
           {error && (
@@ -789,6 +1157,26 @@ function App() {
             ) : (
               <div className="loading">
                 <p>Generate flights to see runway scheduling visualization</p>
+              </div>
+            )}
+          </div>
+        ) : view === 'pilots' ? (
+          <div className="schedule-container">
+            {multiDayPilotResult ? (
+              <PilotScheduleViewer pilotScheduleResult={multiDayPilotResult} isMultiDay={true} />
+            ) : (
+              <div className="loading">
+                <p>Generate multi-day flights and run pilot scheduler to see assignments</p>
+              </div>
+            )}
+          </div>
+        ) : view === 'constrained' ? (
+          <div className="schedule-container">
+            {constrainedResult ? (
+              <ConstrainedRunwayViewer result={constrainedResult} />
+            ) : (
+              <div className="loading">
+                <p>Generate flights and run constrained scheduler to see results</p>
               </div>
             )}
           </div>

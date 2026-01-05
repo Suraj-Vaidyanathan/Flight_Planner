@@ -1,17 +1,17 @@
 import React, { useMemo } from 'react';
 
-// Runway colors - distinct colors for each runway
+// Runway colors - better contrast and distinct colors
 const RUNWAY_COLORS = [
-  '#3b82f6', // Blue
-  '#10b981', // Green
-  '#f59e0b', // Amber
-  '#ef4444', // Red
-  '#8b5cf6', // Purple
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#84cc16', // Lime
-  '#f97316', // Orange
-  '#6366f1', // Indigo
+  { bg: '#3b82f6', text: '#ffffff', name: 'Blue' },      // Bright Blue
+  { bg: '#10b981', text: '#ffffff', name: 'Green' },     // Emerald
+  { bg: '#f59e0b', text: '#000000', name: 'Amber' },     // Amber
+  { bg: '#ef4444', text: '#ffffff', name: 'Red' },       // Red
+  { bg: '#8b5cf6', text: '#ffffff', name: 'Purple' },    // Violet
+  { bg: '#ec4899', text: '#ffffff', name: 'Pink' },      // Pink
+  { bg: '#06b6d4', text: '#000000', name: 'Cyan' },      // Cyan
+  { bg: '#84cc16', text: '#000000', name: 'Lime' },      // Lime
+  { bg: '#f97316', text: '#ffffff', name: 'Orange' },    // Orange
+  { bg: '#6366f1', text: '#ffffff', name: 'Indigo' },    // Indigo
 ];
 
 function RunwayScheduleChart({ scheduleResult }) {
@@ -136,11 +136,17 @@ function RunwayScheduleChart({ scheduleResult }) {
           </div>
           
           {/* Runway rows */}
-          {runwayIds.map(runwayId => (
+          {runwayIds.map(runwayId => {
+            const color = RUNWAY_COLORS[(runwayId - 1) % RUNWAY_COLORS.length];
+            return (
             <div key={runwayId} className="runway-row">
               <div 
                 className="runway-label"
-                style={{ color: RUNWAY_COLORS[(runwayId - 1) % RUNWAY_COLORS.length] }}
+                style={{ 
+                  color: color.bg,
+                  fontWeight: '600',
+                  fontSize: '0.9rem'
+                }}
               >
                 Runway {runwayId}
               </div>
@@ -161,36 +167,58 @@ function RunwayScheduleChart({ scheduleResult }) {
                 ))}
                 
                 {/* Flight blocks */}
-                {flightsByRunway[runwayId]?.map(flight => (
+                {flightsByRunway[runwayId]?.map(flight => {
+                  const isYourFlight = flight.flight_id === 'YOUR_FLIGHT';
+                  return (
                   <div
                     key={flight.flight_id}
-                    className={`flight-block ${flight.flight_id === 'YOUR_FLIGHT' ? 'your-flight' : ''}`}
+                    className={`flight-block ${isYourFlight ? 'your-flight' : ''}`}
                     style={{
                       left: `${flight.startOffset}%`,
                       width: `${Math.max(flight.width, 3)}%`,
-                      background: RUNWAY_COLORS[(runwayId - 1) % RUNWAY_COLORS.length],
+                      background: color.bg,
+                      color: color.text,
+                      border: isYourFlight ? '2px solid #fbbf24' : 'none',
+                      boxShadow: isYourFlight ? '0 0 10px rgba(251, 191, 36, 0.6)' : '0 2px 4px rgba(0,0,0,0.3)',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}
                     title={`${flight.flight_id}: ${flight.origin} → ${flight.destination}\n${formatTime(flight.arrival_start)} - ${formatTime(flight.arrival_end)}`}
                   >
                     {flight.flight_id}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         
         {/* Legend */}
         <div className="legend">
-          {runwayIds.map(runwayId => (
+          {runwayIds.map(runwayId => {
+            const color = RUNWAY_COLORS[(runwayId - 1) % RUNWAY_COLORS.length];
+            return (
             <div key={runwayId} className="legend-item">
               <div 
                 className="legend-color" 
-                style={{ background: RUNWAY_COLORS[(runwayId - 1) % RUNWAY_COLORS.length] }}
+                style={{ 
+                  background: color.bg,
+                  border: '1px solid rgba(255,255,255,0.2)'
+                }}
               />
               <span>Runway {runwayId}</span>
             </div>
-          ))}
+            );
+          })}
           <div className="legend-item">
             <div 
               className="legend-color" 
@@ -211,7 +239,9 @@ function RunwayScheduleChart({ scheduleResult }) {
         <div className="flight-list">
           {scheduleResult.flights
             .sort((a, b) => new Date(a.arrival_start) - new Date(b.arrival_start))
-            .map(flight => (
+            .map(flight => {
+              const color = RUNWAY_COLORS[(flight.runway_id - 1) % RUNWAY_COLORS.length];
+              return (
               <div 
                 key={flight.flight_id} 
                 className="flight-item"
@@ -224,7 +254,9 @@ function RunwayScheduleChart({ scheduleResult }) {
                 <div 
                   className="runway-badge"
                   style={{ 
-                    background: RUNWAY_COLORS[(flight.runway_id - 1) % RUNWAY_COLORS.length] 
+                    background: color.bg,
+                    color: color.text,
+                    fontWeight: '600'
                   }}
                 >
                   R{flight.runway_id}
@@ -254,7 +286,8 @@ function RunwayScheduleChart({ scheduleResult }) {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
         </div>
       </div>
       

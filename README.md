@@ -1,6 +1,6 @@
-# FlightOptima: Route Planner, Runway Scheduler & Pilot Scheduler
+# FlightOptima: Route Planner, Runway Scheduler & Multi-Day Pilot Scheduler
 
-A comprehensive backend simulation tool that calculates the most efficient flight path between airports using weighted graphs, optimizes runway usage using graph coloring algorithms, and ethically assigns pilots to flights with FAA-compliant duty and rest requirements.
+A comprehensive flight planning and scheduling simulation tool featuring route optimization with Dijkstra's algorithm, runway scheduling using graph coloring, FAA-compliant multi-day pilot scheduling, and constrained runway operations with intelligent delay management.
 
 ## 🚀 Features
 
@@ -20,19 +20,39 @@ A comprehensive backend simulation tool that calculates the most efficient fligh
 - **Minimum Runway Optimization**: Minimizes the number of runways needed
 - **Schedule Validation**: Ensures no conflicts in final assignments
 
-### Component C: Ethical Pilot Scheduler (NEW!)
-- **FAA Compliance**: Enforces 8-hour daily limit and 10-hour minimum rest
+### Component C: Multi-Day Pilot Scheduler 🆕
+- **Multi-Day Operations**: Schedule pilots across 1-7 days with automatic daily hour resets
+- **FAA Compliance**: Enforces 8-hour daily limit and 10-hour minimum rest requirements
+- **Realistic Flight Patterns**: Generate flights with peak hours, uniform, or random distributions
 - **Fair Distribution**: Multiple strategies (Least Busy, Most Available, Round Robin)
-- **Automatic Validation**: Checks all duty and rest requirements
-- **Utilization Tracking**: Monitors pilot workload and capacity
+- **Pilot Reassignments**: Track which pilots work which days
+- **Automatic Validation**: Comprehensive checks for all duty and rest requirements
+- **Utilization Tracking**: Monitor pilot workload and capacity across multiple days
 - **Safety First**: Prioritizes pilot well-being over operational efficiency
+
+### Component D: Constrained Runway Scheduler 🆕
+- **Limited Runway Capacity**: Simulate real-world runway constraints
+- **Intelligent Delay Management**: Automatically delay flights when runways are full
+- **Multiple Scheduling Algorithms**:
+  - **Priority-Based**: Flight priority determines scheduling order
+  - **Passenger-First**: Prioritize high-capacity flights
+  - **Distance-First**: Long-haul flights get runway priority
+  - **Hybrid**: Weighted combination (40% priority, 35% passengers, 25% distance)
+- **Algorithm Comparison**: Compare all four algorithms to find the best for your scenario
+- **Performance Metrics**: Track on-time percentage, average delays, and total delay time
+- **Detailed Flight Data**: Passenger counts, distances, durations, and delay tracking
 
 ### 🌐 Web Application
 - **Interactive Map**: Visualize flight routes on a world map with Leaflet
-- **Route Visualization**: See departure, destination, and waypoints
-- **Runway Timeline**: Gantt-style chart showing runway assignments
+- **Four Navigation Tabs**:
+  - **Route Planning**: Find optimal paths between airports
+  - **Runway Scheduling**: Schedule flights with graph coloring
+  - **Multi-Day Pilot Scheduling**: Assign pilots across multiple days
+  - **Constrained Runways**: Simulate limited runway capacity
 - **Real-time Scheduling**: Schedule flights with visual feedback
 - **Responsive Design**: Works on desktop and mobile
+- **Day-by-Day Breakdown**: View assignments grouped by day in multi-day mode
+- **Algorithm Visualization**: Compare scheduling strategies side-by-side
 
 ## 📁 Project Structure
 
@@ -48,38 +68,46 @@ Flight_Planner/
 │   ├── __init__.py
 │   ├── models/                    # Data Models
 │   │   ├── airport.py             # Airport class (Node)
-│   │   ├── flight.py              # Flight class (Scheduling Node)
-│   │   ├── pilot.py               # Pilot class (NEW!)
+│   │   ├── flight.py              # Flight class with multi-day support
+│   │   ├── pilot.py               # Pilot class
 │   │   └── graph.py               # Graph implementations
 │   │
 │   ├── algorithms/                # Core Algorithms
 │   │   ├── routing.py             # Dijkstra's implementation
 │   │   ├── scheduling.py          # Graph Coloring implementation
-│   │   └── pilot_scheduling.py    # Ethical Pilot Scheduler (NEW!)
+│   │   ├── pilot_scheduling.py    # Single-day pilot scheduler
+│   │   ├── multi_day_pilot_scheduling.py  # Multi-day scheduler 🆕
+│   │   └── constrained_scheduling.py      # Constrained runway scheduler 🆕
 │   │
 │   └── utils/                     # Utilities
 │       ├── data_loader.py         # CSV/JSON data loading
-│       └── time_utils.py          # Time interval operations
+│       ├── time_utils.py          # Time interval operations
+│       └── multi_day_generator.py # Multi-day flight generator 🆕
 │
-├── api/                           # REST API (NEW!)
+├── api/                           # REST API
 │   ├── __init__.py
-│   └── app.py                     # Flask API server
+│   └── app.py                     # Flask API server (enhanced with new endpoints)
 │
-├── frontend/                      # React Frontend (NEW!)
+├── frontend/                      # React Frontend
 │   ├── public/
 │   │   └── index.html
 │   ├── src/
 │   │   ├── components/
-│   │   │   └── RunwayScheduleChart.js
-│   │   ├── App.js
-│   │   ├── api.js
+│   │   │   ├── RunwayScheduleChart.js
+│   │   │   ├── PilotScheduleViewer.js    # Enhanced for multi-day 🆕
+│   │   │   └── ConstrainedRunwayViewer.js # New component 🆕
+│   │   ├── App.js                 # Enhanced with 4 tabs
+│   │   ├── api.js                 # Updated API client
 │   │   ├── index.js
-│   │   └── index.css
+│   │   └── index.css              # Enhanced styles
 │   └── package.json
 │
 ├── tests/                         # Unit Tests
 │   ├── test_routing.py
-│   └── test_scheduling.py
+│   ├── test_scheduling.py
+│   ├── test_pilot_scheduling.py
+│   ├── test_multi_day_scheduling.py      # New tests 🆕
+│   └── test_constrained_scheduling.py     # New tests 🆕
 │
 ├── main.py                        # CLI Application
 ├── requirements.txt               # Dependencies
@@ -289,19 +317,117 @@ The REST API provides the following endpoints:
 | `/api/schedule` | POST | Schedule flights to runways |
 | `/api/schedule/demo` | GET | Get demo schedule data |
 | `/api/route/with-scheduling` | POST | Find route and schedule at destination |
+| `/api/pilots/schedule` | POST | Schedule pilots to flights (single day) |
+| `/api/flights/generate-multi-day` | POST | Generate multi-day flights 🆕 |
+| `/api/pilots/schedule-multi-day` | POST | Schedule pilots across multiple days 🆕 |
+| `/api/runways/schedule-constrained` | POST | Schedule with runway constraints 🆕 |
+| `/api/runways/compare-algorithms` | POST | Compare scheduling algorithms 🆕 |
 
-### Example: Find Shortest Route
+### Example: Generate Multi-Day Flights
 ```bash
-curl -X POST http://localhost:5000/api/route/find \
+curl -X POST http://localhost:5000/api/flights/generate-multi-day \
   -H "Content-Type: application/json" \
-  -d '{"origin": "JFK", "destination": "LHR"}'
+  -d '{
+    "destination": "JFK",
+    "num_days": 3,
+    "flights_per_day": 15,
+    "pattern": "realistic"
+  }'
 ```
 
-### Example: Schedule Flights
+### Example: Schedule Multi-Day Pilots
 ```bash
-curl -X POST http://localhost:5000/api/schedule \
+curl -X POST http://localhost:5000/api/pilots/schedule-multi-day \
   -H "Content-Type: application/json" \
-  -d '{"flights": [...], "algorithm": "dsatur"}'
+  -d '{
+    "flights": [...],
+    "num_pilots": 10,
+    "max_daily_hours": 8.0,
+    "min_rest_hours": 10.0,
+    "strategy": "least_busy"
+  }'
+```
+
+### Example: Schedule with Runway Constraints
+```bash
+curl -X POST http://localhost:5000/api/runways/schedule-constrained \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flights": [...],
+    "max_runways": 3,
+    "algorithm": "hybrid"
+  }'
+```
+
+### Example: Compare Scheduling Algorithms
+```bash
+curl -X POST http://localhost:5000/api/runways/compare-algorithms \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flights": [...],
+    "max_runways": 3
+  }'
+```
+
+## 🎯 Usage Examples
+
+### Multi-Day Pilot Scheduling
+```python
+from src.utils.multi_day_generator import MultiDayFlightGenerator
+from src.algorithms.multi_day_pilot_scheduling import MultiDayPilotScheduler
+from src.models.pilot import Pilot
+
+# Generate flights across 3 days
+generator = MultiDayFlightGenerator()
+flights = generator.generate_multi_day_flights(
+    destination_airport="JFK",
+    num_days=3,
+    flights_per_day=15,
+    pattern="realistic"
+)
+
+# Create pilots
+pilots = [Pilot(f"P{i:03d}", f"Pilot {i}", "Commercial") for i in range(8)]
+
+# Schedule pilots across all days
+scheduler = MultiDayPilotScheduler()
+result = scheduler.schedule(
+    flights=flights,
+    pilots=pilots,
+    max_daily_hours=8.0,
+    min_rest_hours=10.0,
+    strategy="least_busy"
+)
+
+print(f"Total pilots used: {result.total_pilots_used}")
+print(f"Days scheduled: {len(result.daily_schedules)}")
+print(f"Total assignments: {len(result.all_assignments)}")
+print(f"Compliance rate: {result.overall_compliance_rate}%")
+print(f"FAA compliant: {result.is_valid}")
+```
+
+### Constrained Runway Scheduling
+```python
+from src.algorithms.constrained_scheduling import ConstrainedRunwayScheduler
+
+scheduler = ConstrainedRunwayScheduler()
+
+# Schedule with limited runways
+result = scheduler.schedule(
+    flights=flights,
+    max_runways=3,
+    algorithm="hybrid"
+)
+
+print(f"Algorithm: {result.algorithm}")
+print(f"Total flights: {result.total_flights}")
+print(f"Delayed flights: {len(result.delayed_flights)}")
+print(f"On-time percentage: {result.on_time_percentage}%")
+print(f"Average delay: {result.avg_delay_minutes} minutes")
+
+# Compare all algorithms
+comparison = scheduler.compare_algorithms(flights, max_runways=3)
+print(f"Best algorithm: {comparison['best_algorithm']}")
 ```
 
 ## 📈 Performance

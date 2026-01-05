@@ -97,6 +97,50 @@ const api = {
       base_airport: options.baseAirport || ''
     });
     return response.data;
+  },
+
+  // Generate multi-day flights
+  async generateMultiDayFlights(destination, numDays = 3, flightsPerDay = 15, pattern = 'realistic', seed = null) {
+    const response = await axios.post(`${API_BASE}/flights/generate-multi-day`, {
+      destination,
+      num_days: numDays,
+      flights_per_day: flightsPerDay,
+      pattern,
+      seed
+    });
+    return response.data;
+  },
+
+  // Schedule pilots across multiple days
+  async schedulePilotsMultiDay(flights, numPilots = 5, options = {}) {
+    const response = await axios.post(`${API_BASE}/pilots/schedule-multi-day`, {
+      flights,
+      num_pilots: numPilots,
+      min_rest_hours: options.minRestHours || 10.0,
+      max_daily_hours: options.maxDailyHours || 8.0,
+      strategy: options.strategy || 'least_busy',
+      base_airport: options.baseAirport || ''
+    });
+    return response.data;
+  },
+
+  // Schedule with constrained runways
+  async scheduleConstrainedRunways(flights, maxRunways = 2, algorithm = 'priority_based') {
+    const response = await axios.post(`${API_BASE}/runways/schedule-constrained`, {
+      flights,
+      max_runways: maxRunways,
+      algorithm
+    });
+    return response.data;
+  },
+
+  // Compare constrained scheduling algorithms
+  async compareConstrainedAlgorithms(flights, maxRunways = 2) {
+    const response = await axios.post(`${API_BASE}/runways/compare-algorithms`, {
+      flights,
+      max_runways: maxRunways
+    });
+    return response.data;
   }
 };
 
