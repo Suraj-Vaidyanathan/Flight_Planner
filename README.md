@@ -1,6 +1,6 @@
-# FlightOptima: Route Planner & Runway Scheduler
+# FlightOptima: Route Planner, Runway Scheduler & Pilot Scheduler
 
-A comprehensive backend simulation tool that calculates the most efficient flight path between airports using weighted graphs and optimizes runway usage at destination airports using graph coloring algorithms.
+A comprehensive backend simulation tool that calculates the most efficient flight path between airports using weighted graphs, optimizes runway usage using graph coloring algorithms, and ethically assigns pilots to flights with FAA-compliant duty and rest requirements.
 
 ## 🚀 Features
 
@@ -20,7 +20,14 @@ A comprehensive backend simulation tool that calculates the most efficient fligh
 - **Minimum Runway Optimization**: Minimizes the number of runways needed
 - **Schedule Validation**: Ensures no conflicts in final assignments
 
-### 🌐 Web Application (NEW!)
+### Component C: Ethical Pilot Scheduler (NEW!)
+- **FAA Compliance**: Enforces 8-hour daily limit and 10-hour minimum rest
+- **Fair Distribution**: Multiple strategies (Least Busy, Most Available, Round Robin)
+- **Automatic Validation**: Checks all duty and rest requirements
+- **Utilization Tracking**: Monitors pilot workload and capacity
+- **Safety First**: Prioritizes pilot well-being over operational efficiency
+
+### 🌐 Web Application
 - **Interactive Map**: Visualize flight routes on a world map with Leaflet
 - **Route Visualization**: See departure, destination, and waypoints
 - **Runway Timeline**: Gantt-style chart showing runway assignments
@@ -42,11 +49,13 @@ Flight_Planner/
 │   ├── models/                    # Data Models
 │   │   ├── airport.py             # Airport class (Node)
 │   │   ├── flight.py              # Flight class (Scheduling Node)
+│   │   ├── pilot.py               # Pilot class (NEW!)
 │   │   └── graph.py               # Graph implementations
 │   │
 │   ├── algorithms/                # Core Algorithms
 │   │   ├── routing.py             # Dijkstra's implementation
-│   │   └── scheduling.py          # Graph Coloring implementation
+│   │   ├── scheduling.py          # Graph Coloring implementation
+│   │   └── pilot_scheduling.py    # Ethical Pilot Scheduler (NEW!)
 │   │
 │   └── utils/                     # Utilities
 │       ├── data_loader.py         # CSV/JSON data loading
@@ -141,7 +150,9 @@ python -m pytest tests/ -v
 5. **Load Flight Schedule**: Load predefined flight schedules
 6. **Generate Random Flights**: Create simulated traffic
 7. **Run Runway Scheduler**: Schedule flights to minimize runways
-8. **Full Demo**: Complete walkthrough of routing + scheduling
+8. **Run Ethical Pilot Scheduler**: Assign pilots with FAA compliance (NEW!)
+9. **Full Demo**: Complete walkthrough of routing + scheduling + pilots
+10. **Help & About**: View documentation and tips
 
 ### Example Workflow
 
@@ -149,6 +160,7 @@ python -m pytest tests/ -v
 from src.utils.data_loader import DataLoader
 from src.algorithms.routing import RoutePlanner
 from src.algorithms.scheduling import RunwayScheduler
+from src.algorithms.pilot_scheduling import PilotScheduler
 from datetime import datetime
 
 # Load data
@@ -160,11 +172,39 @@ planner = RoutePlanner(graph)
 result = planner.find_shortest_path("JFK", "LHR", datetime.now())
 print(result)
 
-# Schedule flights
+# Schedule flights to runways
 flights = loader.load_flights()
 scheduler = RunwayScheduler(algorithm='dsatur')
 schedule = scheduler.schedule(flights)
 print(schedule)
+
+# Assign pilots ethically
+pilot_scheduler = PilotScheduler(min_rest_hours=10.0, max_daily_hours=8.0)
+pilot_scheduler.create_pilots(5, base_airport='LHR')
+pilot_result = pilot_scheduler.schedule(flights, strategy='least_busy')
+print(pilot_result)
+
+# Validate compliance
+is_valid, violations = pilot_scheduler.validate_schedule(pilot_result.assignments)
+if is_valid:
+    print("✅ All FAA regulations satisfied!")
+```
+
+### Pilot Scheduling Demo
+
+Run the standalone pilot scheduling demo:
+
+```bash
+python demo_pilot_scheduling.py
+```
+
+This demonstrates:
+- ✅ Basic pilot scheduling
+- ✅ Rest requirement enforcement (10 hours)
+- ✅ Daily hour limit enforcement (8 hours)
+- ✅ Strategy comparison (Least Busy vs Round Robin)
+
+For detailed documentation, see [PILOT_SCHEDULING.md](PILOT_SCHEDULING.md)
 ```
 
 ## 📊 Data Formats
